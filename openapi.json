@@ -703,6 +703,7 @@
       "CreateGlossaryRequest": {
         "type": "object",
         "required": ["name", "targetLang", "keys", "translated"],
+        "description": "Send `keys` and `translated` as native JSON types. The official examples show them encoded as JSON strings, but that breaks the web UI's editor — verified empirically on 2026-05-04: a doubly-encoded payload appears in the UI with the entry count equal to the encoded string's character length, and the editor refuses to open it.",
         "properties": {
           "name": { "type": "string", "description": "Glossary name" },
           "desc": { "type": "string", "description": "Glossary description" },
@@ -711,15 +712,14 @@
             "description": "Glossary applies when documents are translated into this target language."
           },
           "keys": {
-            "description": "Source terminology list. Documented as `String[]`; the API examples encode it as a JSON string.",
-            "oneOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "string" }]
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Source terminology list."
           },
           "translated": {
-            "description": "Term-to-translation mapping. Documented as `JSON`; the API examples encode it as a JSON string.",
-            "oneOf": [
-              { "type": "object", "additionalProperties": { "type": "string" } },
-              { "type": "string" }
-            ]
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Term-to-translation mapping."
           }
         }
       },
@@ -732,38 +732,48 @@
       "UpdateGlossaryRequest": {
         "type": "object",
         "required": ["glossaryId"],
+        "description": "Send `keys` and `translated` as native JSON types — see `CreateGlossaryRequest`.",
         "properties": {
           "glossaryId": { "type": "string" },
           "name": { "type": "string" },
           "desc": { "type": "string" },
           "targetLang": { "type": "string" },
           "keys": {
-            "oneOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "string" }]
+            "type": "array",
+            "items": { "type": "string" }
           },
           "translated": {
-            "oneOf": [
-              { "type": "object", "additionalProperties": { "type": "string" } },
-              { "type": "string" }
-            ]
+            "type": "object",
+            "additionalProperties": { "type": "string" }
           }
         }
       },
       "Glossary": {
         "type": "object",
-        "description": "Glossary as returned by the API. `keys` and `translated` arrive as JSON-encoded strings — clients must run them through `JSON.parse`. The bundled SDK does this transparently.",
+        "description": "Glossary as returned by the API. The server echoes back whatever shape was sent — glossaries created with native arrays/objects (the correct path) return them as native types; legacy glossaries created with JSON-encoded strings return strings. The bundled SDK normalizes both into native types on receive.",
         "required": ["glossaryId"],
         "properties": {
           "glossaryId": { "type": "string" },
           "name": { "type": "string" },
-          "desc": { "type": "string" },
+          "desc": { "type": ["string", "null"] },
           "targetLang": { "type": "string" },
           "keys": {
-            "type": "string",
-            "description": "JSON-encoded array of source terms. Example: `\"[\\\"otranslator\\\",\\\"术语\\\"]\"`."
+            "oneOf": [
+              { "type": "array", "items": { "type": "string" } },
+              {
+                "type": "string",
+                "description": "JSON-encoded array, present on legacy glossaries created before the encoding fix."
+              }
+            ]
           },
           "translated": {
-            "type": "string",
-            "description": "JSON-encoded object mapping source term to translation. Example: `\"{\\\"otranslator\\\":\\\"OTranslator\\\"}\"`."
+            "oneOf": [
+              { "type": "object", "additionalProperties": { "type": "string" } },
+              {
+                "type": "string",
+                "description": "JSON-encoded object, present on legacy glossaries."
+              }
+            ]
           },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }

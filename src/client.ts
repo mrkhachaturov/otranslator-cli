@@ -224,8 +224,11 @@ export class OTranslatorClient {
    * Create a new glossary.
    * Endpoint: `POST /v1/glossary/create`
    *
-   * `keys` and `translated` are sent as JSON-encoded strings, matching the
-   * official examples.
+   * Sends `keys` and `translated` as **native** JSON arrays/objects. The
+   * official examples show JSON-encoded strings, but those are stored
+   * incorrectly: the web UI counts each character of the encoded string as a
+   * separate term. Sending native types makes glossaries appear correctly in
+   * the editor and roundtrip cleanly.
    */
   async createGlossary(input: CreateGlossaryInput): Promise<CreateGlossaryResponse> {
     requireString('name', input?.name);
@@ -240,8 +243,8 @@ export class OTranslatorClient {
       name: input.name,
       ...(input.desc !== undefined ? { desc: input.desc } : {}),
       targetLang: input.targetLang,
-      keys: JSON.stringify(input.keys),
-      translated: JSON.stringify(input.translated),
+      keys: input.keys,
+      translated: input.translated,
     });
   }
 
@@ -261,6 +264,9 @@ export class OTranslatorClient {
   /**
    * Update glossary metadata or terminology.
    * Endpoint: `POST /v1/glossary/update`
+   *
+   * `keys` and `translated` are sent as native arrays/objects (see
+   * `createGlossary` for why).
    */
   async updateGlossary(input: UpdateGlossaryInput): Promise<Glossary> {
     requireString('glossaryId', input?.glossaryId);
@@ -268,8 +274,8 @@ export class OTranslatorClient {
     if (input.name !== undefined) body.name = input.name;
     if (input.desc !== undefined) body.desc = input.desc;
     if (input.targetLang !== undefined) body.targetLang = input.targetLang;
-    if (input.keys !== undefined) body.keys = JSON.stringify(input.keys);
-    if (input.translated !== undefined) body.translated = JSON.stringify(input.translated);
+    if (input.keys !== undefined) body.keys = input.keys;
+    if (input.translated !== undefined) body.translated = input.translated;
     const raw = await this.request<Record<string, unknown>>('/v1/glossary/update', body);
     return decodeGlossary(raw);
   }

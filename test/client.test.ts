@@ -45,11 +45,14 @@ describe('OTranslatorClient', () => {
     expect(task.status).toBe('Completed');
   });
 
-  it('JSON-encodes glossary keys and translated', async () => {
+  it('sends glossary keys and translated as native types (no double-encoding)', async () => {
+    // Regression guard for v0.1.2: prior versions JSON.stringify'd these
+    // fields, which made the web UI iterate the encoded string character by
+    // character (bug confirmed empirically — see CHANGELOG entry for 0.1.2).
     const fetchMock = makeFetch((_url, init) => {
       const body = JSON.parse(init.body as string);
-      expect(body.keys).toBe(JSON.stringify(['term']));
-      expect(body.translated).toBe(JSON.stringify({ term: 'translation' }));
+      expect(body.keys).toEqual(['term']);
+      expect(body.translated).toEqual({ term: 'translation' });
       return new Response(JSON.stringify({ glossaryId: 'g_1' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

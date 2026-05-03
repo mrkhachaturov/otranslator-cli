@@ -1,6 +1,6 @@
 {
   "name": "otranslator-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Unofficial TypeScript SDK and CLI for the OTranslator API — AI document/text translation for 50+ formats and 100+ languages",
   "type": "module",
   "private": false,

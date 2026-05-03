@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-04
+
+### Fixed
+
+- **Glossary `keys` and `translated` are now sent as native JSON arrays/objects
+  instead of JSON-encoded strings.** The official API examples show them
+  doubly-encoded; the API accepted that, but the web UI editor was reading the
+  encoded string character-by-character — a 4-term glossary appeared as 50
+  entries (one per character of `["Bucket","Inbox",…]`) and the editor refused
+  to open it. Verified empirically against
+  https://otranslator.com/en/my/glossary on 2026-05-04.
+- Glossaries created from v0.1.2 onward open correctly in the OTranslator web
+  UI's editor and report the right entry count. Existing legacy glossaries
+  created by older `otcli` versions still parse on receive (the SDK's
+  response-side decoder is unchanged); only newly-created or updated ones use
+  the new wire format.
+
+### Changed
+
+- `OTranslatorClient.createGlossary` and `updateGlossary` no longer
+  `JSON.stringify` the `keys` and `translated` fields before posting.
+- OpenAPI spec updated: request schemas now require native types; response
+  schemas accept both shapes for backward compatibility with legacy data.
+
 ## [0.1.1] - 2026-05-03
 
 ### Added

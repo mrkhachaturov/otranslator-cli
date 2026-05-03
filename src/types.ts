@@ -167,9 +167,13 @@ export interface CreateGlossaryInput {
   desc?: string;
   /** Target language this glossary applies to. */
   targetLang: string;
-  /** Source terminology list. */
+  /**
+   * Source terminology list. Sent as a native array on the wire — do not
+   * pre-encode as a JSON string (the official API examples are misleading on
+   * this point; an encoded string corrupts the web UI editor).
+   */
   keys: string[];
-  /** Term-to-translation mapping. */
+  /** Term-to-translation mapping. Sent as a native object on the wire. */
   translated: Record<string, string>;
 }
 
