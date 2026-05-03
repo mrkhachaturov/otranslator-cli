@@ -1,13 +1,33 @@
 # otranslator-cli
 
+[![npm version](https://img.shields.io/npm/v/otranslator-cli?logo=npm&label=npm)](https://www.npmjs.com/package/otranslator-cli)
+[![Downloads](https://img.shields.io/npm/dm/otranslator-cli?logo=npm&color=blue)](https://www.npmjs.com/package/otranslator-cli)
+[![CI](https://github.com/mrkhachaturov/otranslator-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/mrkhachaturov/otranslator-cli/actions/workflows/ci.yml)
+[![Node](https://img.shields.io/node/v/otranslator-cli?logo=nodedotjs)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/npm/l/otranslator-cli?color=success)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](./tsconfig.json)
+
 Unofficial Node.js SDK and CLI for the [OTranslator](https://otranslator.com) API. Document, subtitle, audio, and plain text translation across 100+ languages with the original layout preserved.
 
 > Not affiliated with OTranslator. Reverse-engineered from the public developer docs at https://otranslator.com/en/developer and verified against the live API. Every endpoint, request shape, and response shape documented here was exercised by the e2e suite under `test/e2e/` on 2026-05-03.
 
+## First run
+
+```bash
+npm install -g otranslator-cli   # adds `otcli` to your $PATH
+otcli login                      # interactive prompt, validates against /v1/me
+otcli whoami                     # → { "source": "config", "balance": <credits> }
+otcli translate "Hello, world." --from English --to Spanish
+```
+
+Prefer not to install globally? `npx otranslator-cli <command>` works the same.
+
 ## Install
 
 ```bash
-npm install otranslator-cli
+npm install otranslator-cli      # as a dependency in your project
+# or
+npm install -g otranslator-cli   # as a system-wide CLI
 ```
 
 The npm package is `otranslator-cli`. It installs a single CLI binary on your `$PATH` called `otcli`. All examples in this README use `otcli`.
