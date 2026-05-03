@@ -7,6 +7,8 @@ export type {
   CreateGlossaryResponse,
   CreateTaskInput,
   CreateTaskResponse,
+  DownloadOptions,
+  DownloadResult,
   FileTypesResponse,
   Glossary,
   LanguagesResponse,
@@ -21,4 +23,5 @@ export type {
   TranslateTextsResponse,
   TranslationTask,
   UpdateGlossaryInput,
+  WaitForTaskOptions,
 } from './types.js';

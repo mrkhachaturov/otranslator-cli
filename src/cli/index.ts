@@ -1,5 +1,5 @@
 import { Command, Option } from 'commander';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import {
@@ -181,6 +181,78 @@ Examples (pick --model from \`otcli models\`):
 
   # Restart a Terminated task without re-paying
   $ otcli start <taskId>
+`,
+  );
+
+program
+  .command('wait <taskId>')
+  .description('Poll a translation task until it reaches a terminal status')
+  .option('--interval <ms>', 'Poll interval', '5000')
+  .option('--max-wait <ms>', 'Total time budget', '300000')
+  .action((taskId: string, opts, cmd: Command) => {
+    run(async () => {
+      const client = buildClient(globals(cmd));
+      const task = await client.waitForTask(taskId, {
+        intervalMs: Number(opts.interval),
+        maxMs: Number(opts.maxWait),
+      });
+      output(task);
+    });
+  });
+
+program
+  .command('download <taskId>')
+  .description('Download the translated file for a Completed task')
+  .option('-o, --output <path>', 'Output path (default: original filename from task.fileTitle)')
+  .option('--bilingual', 'Download the bilingual side-by-side rendering')
+  .option('--wait', 'Poll until status is Completed before downloading')
+  .option('--interval <ms>', 'Poll interval when --wait is set', '5000')
+  .option('--max-wait <ms>', 'Time budget when --wait is set', '300000')
+  .option('--force', 'Overwrite an existing file at the output path')
+  .action((taskId: string, opts, cmd: Command) => {
+    run(async () => {
+      const client = buildClient(globals(cmd));
+      if (opts.wait) {
+        await client.waitForTask(taskId, {
+          intervalMs: Number(opts.interval),
+          maxMs: Number(opts.maxWait),
+        });
+      }
+      const result = await client.downloadTranslated(taskId, {
+        bilingual: Boolean(opts.bilingual),
+      });
+      const outputPath = (opts.output as string | undefined) ?? result.filename;
+      if (!opts.force) {
+        try {
+          await stat(outputPath);
+          process.stderr.write(`Refusing to overwrite ${outputPath}. Pass --force or -o <path>.\n`);
+          process.exit(1);
+        } catch {
+          // File doesn't exist — proceed.
+        }
+      }
+      const buffer = Buffer.from(await result.blob.arrayBuffer());
+      await writeFile(outputPath, buffer);
+      output({
+        path: outputPath,
+        bytes: buffer.length,
+        contentType: result.contentType,
+        bilingual: Boolean(opts.bilingual),
+        sourceUrl: opts.bilingual
+          ? result.task.translatedBilingualFileUrl
+          : result.task.translatedFileUrl,
+      });
+    });
+  })
+  .addHelpText(
+    'after',
+    `
+Examples:
+  $ otcli download <taskId>                          # writes to ./<task.fileTitle>
+  $ otcli download <taskId> -o translated.md         # explicit path
+  $ otcli download <taskId> --bilingual              # writes <name>.bilingual.<ext>
+  $ otcli download <taskId> --wait                   # poll until Completed, then fetch
+  $ otcli download <taskId> --wait --max-wait 600000 # 10-minute budget for big docs
 `,
   );
 

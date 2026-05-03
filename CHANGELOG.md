@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-03
+
+### Added
+
+- `client.waitForTask(taskId, { intervalMs?, maxMs? })` — polls `queryTask`
+  until the task reaches `Completed`, `Terminated`, or `Cancelled`, then
+  returns the final task object. Throws `OTranslatorError` with
+  `code: 'TIMEOUT'` if the budget elapses first.
+- `client.downloadTranslated(taskId, { bilingual? })` — fetches the
+  pre-signed Google Cloud Storage URL exposed by `task.translatedFileUrl`
+  (or `translatedBilingualFileUrl`) and returns
+  `{ blob, filename, contentType, task }`. Validates that the task is
+  `Completed` before fetching and refuses to download a missing bilingual
+  rendering with a clear error.
+- `otcli wait <taskId>` CLI command — primitive that prints the final task
+  JSON. Useful for scripting (`otcli wait $T && otcli download $T`).
+- `otcli download <taskId>` CLI command — saves the translated file to
+  disk. Defaults to the original filename from `task.fileTitle`. Refuses
+  to overwrite without `--force`. Supports `--bilingual` (writes
+  `<basename>.bilingual.<ext>`), `--wait` (polls before downloading),
+  `--interval`, `--max-wait`, and `-o <path>`.
+
+### Changed
+
+- `test/e2e/_helpers.ts::pollUntilDone` is now a thin wrapper over
+  `client.waitForTask` — the polling logic moved into the SDK.
+
 ## [0.1.0] - 2026-05-03
 
 ### Added

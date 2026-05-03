@@ -5,6 +5,8 @@ import type {
   CreateGlossaryResponse,
   CreateTaskInput,
   CreateTaskResponse,
+  DownloadOptions,
+  DownloadResult,
   FileTypesResponse,
   Glossary,
   LanguagesResponse,
@@ -14,11 +16,17 @@ import type {
   RestartTaskInput,
   ReviseTranslationInput,
   SuccessResponse,
+  TaskStatus,
   TranslateTextsInput,
   TranslateTextsResponse,
   TranslationTask,
   UpdateGlossaryInput,
+  WaitForTaskOptions,
 } from './types.js';
+
+const TERMINAL_STATUSES: readonly TaskStatus[] = ['Completed', 'Terminated', 'Cancelled'];
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const DEFAULT_BASE_URL = 'https://otranslator.com/api';
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -300,8 +308,111 @@ export class OTranslatorClient {
   }
 
   // -------------------------------------------------------------------------
+  // Composed helpers (built on top of the raw endpoints)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Poll `queryTask` until the task reaches a terminal status (`Completed`,
+   * `Terminated`, or `Cancelled`).
+   *
+   * @throws `OTranslatorError` with `code: 'TIMEOUT'` if `maxMs` elapses first.
+   */
+  async waitForTask(taskId: string, options: WaitForTaskOptions = {}): Promise<TranslationTask> {
+    requireString('taskId', taskId);
+    const intervalMs = options.intervalMs ?? 5_000;
+    const maxMs = options.maxMs ?? 240_000;
+    const start = Date.now();
+    let last: TranslationTask | undefined;
+    while (Date.now() - start < maxMs) {
+      last = await this.queryTask(taskId);
+      if (last.status && TERMINAL_STATUSES.includes(last.status)) return last;
+      await sleep(intervalMs);
+    }
+    throw new OTranslatorError(
+      `Task ${taskId} did not reach a terminal state within ${maxMs}ms (last status: ${last?.status ?? 'unknown'})`,
+      { code: 'TIMEOUT', data: last },
+    );
+  }
+
+  /**
+   * Download the translated file for a `Completed` task.
+   *
+   * Queries the task, then fetches the pre-signed Google Cloud Storage URL
+   * exposed via `task.translatedFileUrl` (or `translatedBilingualFileUrl` when
+   * `bilingual: true`). Returns the raw `Blob`, a suggested filename derived
+   * from `task.fileTitle`, and the response's content type.
+   *
+   * @throws `OTranslatorError` with `code: 'INVALID_INPUT'` if the task is not
+   *         `Completed`, or `code: 'INVALID_RESPONSE'` if the URL is missing
+   *         (e.g. requesting `bilingual` for an unsupported format).
+   */
+  async downloadTranslated(taskId: string, options: DownloadOptions = {}): Promise<DownloadResult> {
+    requireString('taskId', taskId);
+    const task = await this.queryTask(taskId);
+    if (task.status !== 'Completed') {
+      throw new OTranslatorError(
+        `Task ${taskId} is not Completed (status: ${task.status ?? 'unknown'})`,
+        { code: 'INVALID_INPUT', data: task },
+      );
+    }
+    const url = options.bilingual ? task.translatedBilingualFileUrl : task.translatedFileUrl;
+    if (!url) {
+      throw new OTranslatorError(
+        options.bilingual
+          ? `translatedBilingualFileUrl missing — bilingual rendering is not available for this task's format`
+          : `translatedFileUrl missing on a Completed task — this should not happen`,
+        { code: 'INVALID_RESPONSE', data: task },
+      );
+    }
+
+    const response = await this.fetchRaw(url);
+    if (!response.ok) {
+      throw new OTranslatorError(`Failed to download translated file: HTTP ${response.status}`, {
+        code: 'HTTP_ERROR',
+        status: response.status,
+      });
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const blob = new Blob([arrayBuffer], {
+      ...(response.headers.get('content-type')
+        ? { type: response.headers.get('content-type')! }
+        : {}),
+    });
+    const contentType = response.headers.get('content-type');
+
+    const baseName = task.fileTitle ?? taskId;
+    const filename = options.bilingual ? insertSuffix(baseName, '.bilingual') : baseName;
+
+    return { blob, filename, contentType, task };
+  }
+
+  // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
+
+  /**
+   * Plain `fetch` with the configured timeout — no `Authorization` header,
+   * no `baseUrl` prefix. Used to download from third-party hosts (the
+   * pre-signed Google Cloud Storage URLs the API hands back).
+   */
+  private async fetchRaw(url: string, init: RequestInit = {}): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error('Request timeout')), this.timeoutMs);
+    try {
+      return await this.fetchImpl(url, { ...init, signal: controller.signal });
+    } catch (cause) {
+      const isAbort = (cause as { name?: string })?.name === 'AbortError';
+      throw new OTranslatorError(
+        isAbort
+          ? `Download from ${url} timed out after ${this.timeoutMs}ms`
+          : `Network error while downloading: ${(cause as Error).message}`,
+        { code: isAbort ? 'TIMEOUT' : 'NETWORK_ERROR', cause },
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   private async request<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
     const url = `${this.baseUrl}${path}`;
@@ -385,6 +496,16 @@ function requireString(name: string, value: unknown): asserts value is string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new OTranslatorError(`${name} is required`, { code: 'INVALID_INPUT' });
   }
+}
+
+/**
+ * Insert a suffix before the file extension. Handles names without an
+ * extension (`README` → `README.bilingual`) and dotfiles (`.env` → `.env.bilingual`).
+ */
+function insertSuffix(filename: string, suffix: string): string {
+  const dot = filename.lastIndexOf('.');
+  if (dot <= 0) return filename + suffix;
+  return filename.slice(0, dot) + suffix + filename.slice(dot);
 }
 
 /**

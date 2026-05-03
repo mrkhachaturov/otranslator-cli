@@ -88,9 +88,16 @@ otcli me                     # → { "balance": 421 }
 # Synchronous text translation
 otcli translate "Hello, world." --from English --to Spanish
 
-# Document workflow
+# Document workflow — preview → wait → download
 otcli create -f contract.pdf --from English --to French --preview
-otcli task <taskId>                              # poll until status: Completed
+otcli wait <taskId>                              # blocks until Completed
+otcli download <taskId> -o translated.pdf        # writes the file to disk
+
+# Or in one chained call
+TASK=$(otcli create -f contract.pdf --from English --to French --preview | jq -r .taskId)
+otcli download "$TASK" --wait -o translated.pdf
+
+# Pay credits to convert a preview into a full document translation
 otcli start <taskId> --pay-with-credits --model gpt-5.4
 ```
 
@@ -100,7 +107,7 @@ Every command prints JSON to stdout and exits non-zero on failure with the API's
 
 ```ts
 import { OTranslatorClient } from 'otranslator-cli';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 
 const client = new OTranslatorClient({
   apiKey: process.env.OTRANSLATOR_API_KEY!,
@@ -117,24 +124,21 @@ const { taskId } = await client.createTask({
   preview: true,
 });
 
-// Poll until terminal
-let task = await client.queryTask(taskId);
-while (task.status === 'Waiting' || task.status === 'Processing') {
-  await new Promise((r) => setTimeout(r, 5_000));
-  task = await client.queryTask(taskId);
-}
-
-console.log(task.status, task.translatedFileUrl, `costs ${task.price} credits to convert`);
+// Wait for the preview to finish, then download it
+const task = await client.waitForTask(taskId);
+const { blob, filename } = await client.downloadTranslated(taskId);
+await writeFile(filename, Buffer.from(await blob.arrayBuffer()));
+console.log(`saved ${filename} — costs ${task.price} credits to convert to a full translation`);
 
 // Convert preview → full translation
-if (task.status === 'Completed' && task.price !== undefined) {
+if (task.price !== undefined) {
   await client.restartTask({ taskId, payWithCredits: true, model: 'gpt-5.4' });
 }
 ```
 
 ## What's covered
 
-15 endpoints, one method each. Every row below was exercised against the live API.
+15 raw endpoints (one SDK method each, all exercised against the live API) plus two composed helpers — `waitForTask` and `downloadTranslated` — that turn the preview-then-pay flow into one call each.
 
 | SDK method       | HTTP                                  | Notes                                                                                        |
 | ---------------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -153,6 +157,13 @@ if (task.status === 'Completed' && task.price !== undefined) {
 | `languages`      | `POST /v1/languages`                  | 80+ languages including `Any Language` as a wildcard.                                        |
 | `models`         | `POST /v1/models`                     | Returns 11 model ids (see Model tiers above).                                                |
 | `me`             | `POST /v1/me`                         | Returns `{ balance: number }` — credit balance and nothing else.                             |
+
+Composed helpers (no extra endpoints — built on top of the rows above):
+
+| SDK method           | What it does                                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `waitForTask`        | Polls `queryTask` until `Completed` / `Terminated` / `Cancelled`. Configurable `intervalMs` and `maxMs`.                 |
+| `downloadTranslated` | Queries the task, fetches the pre-signed GCS URL, returns `{ blob, filename, contentType, task }`. Supports `bilingual`. |
 
 For full request and response shapes, look at the generated TypeScript types in `dist/index.d.ts` or open [`openapi.json`](./openapi.json).
 

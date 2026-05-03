@@ -87,4 +87,125 @@ describe('OTranslatorClient', () => {
       message: 'invalid key',
     });
   });
+
+  it('waitForTask polls until status is terminal', async () => {
+    const statuses = ['Waiting', 'Processing', 'Completed'];
+    let call = 0;
+    const fetchMock = makeFetch(() => {
+      const status = statuses[call++] ?? 'Completed';
+      return new Response(JSON.stringify({ taskId: 't_1', status }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    const client = new OTranslatorClient({ apiKey, fetch: fetchMock });
+    const final = await client.waitForTask('t_1', { intervalMs: 1, maxMs: 5_000 });
+    expect(final.status).toBe('Completed');
+    expect(call).toBe(3);
+  });
+
+  it('waitForTask throws TIMEOUT after the budget elapses', async () => {
+    const fetchMock = makeFetch(
+      () =>
+        new Response(JSON.stringify({ taskId: 't_1', status: 'Processing' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    const client = new OTranslatorClient({ apiKey, fetch: fetchMock });
+    await expect(client.waitForTask('t_1', { intervalMs: 1, maxMs: 50 })).rejects.toMatchObject({
+      code: 'TIMEOUT',
+    });
+  });
+
+  it('downloadTranslated fetches the URL and returns a Blob with a derived filename', async () => {
+    const downloadUrl = 'https://storage.googleapis.com/otranslator/production/abc.md?Signature=x';
+    const fetchMock = makeFetch((url) => {
+      if (url.endsWith('/v1/translation/query')) {
+        return new Response(
+          JSON.stringify({
+            taskId: 't_1',
+            status: 'Completed',
+            fileTitle: 'sample.md',
+            translatedFileUrl: downloadUrl,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url === downloadUrl) {
+        return new Response('# translated content\n', {
+          status: 200,
+          headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+        });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    const client = new OTranslatorClient({ apiKey, fetch: fetchMock });
+    const result = await client.downloadTranslated('t_1');
+    expect(result.filename).toBe('sample.md');
+    expect(result.contentType).toBe('text/markdown; charset=utf-8');
+    expect(await result.blob.text()).toBe('# translated content\n');
+  });
+
+  it('downloadTranslated --bilingual inserts the suffix and uses the bilingual url', async () => {
+    const bilingualUrl = 'https://storage.googleapis.com/otranslator/production/abc-bi.md?Sig=y';
+    const fetchMock = makeFetch((url) => {
+      if (url.endsWith('/v1/translation/query')) {
+        return new Response(
+          JSON.stringify({
+            taskId: 't_1',
+            status: 'Completed',
+            fileTitle: 'report.md',
+            translatedFileUrl: 'https://example.test/translated.md',
+            translatedBilingualFileUrl: bilingualUrl,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url === bilingualUrl) {
+        return new Response('bilingual content', {
+          status: 200,
+          headers: { 'Content-Type': 'text/markdown' },
+        });
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    const client = new OTranslatorClient({ apiKey, fetch: fetchMock });
+    const result = await client.downloadTranslated('t_1', { bilingual: true });
+    expect(result.filename).toBe('report.bilingual.md');
+    expect(await result.blob.text()).toBe('bilingual content');
+  });
+
+  it('downloadTranslated rejects when the task is not Completed', async () => {
+    const fetchMock = makeFetch(
+      () =>
+        new Response(JSON.stringify({ taskId: 't_1', status: 'Processing' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    const client = new OTranslatorClient({ apiKey, fetch: fetchMock });
+    await expect(client.downloadTranslated('t_1')).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+    });
+  });
+
+  it('downloadTranslated rejects when the bilingual URL is missing', async () => {
+    const fetchMock = makeFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            taskId: 't_1',
+            status: 'Completed',
+            translatedFileUrl: 'https://example.test/translated.md',
+            // translatedBilingualFileUrl is intentionally absent
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+    );
+    const client = new OTranslatorClient({ apiKey, fetch: fetchMock });
+    await expect(client.downloadTranslated('t_1', { bilingual: true })).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
 });

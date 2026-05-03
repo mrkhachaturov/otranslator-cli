@@ -62,6 +62,21 @@ describe.skipIf(!enabled)('e2e: paid endpoints', () => {
       expect(typeof final.usedCredits).toBe('number');
     });
 
+    it('downloadTranslated returns a non-empty Blob with the original filename', async () => {
+      expect(taskId).toBeDefined();
+      const result = await c.downloadTranslated(taskId!);
+      expect(result.filename).toBeTypeOf('string');
+      expect(result.filename.length).toBeGreaterThan(0);
+      expect(result.blob.size).toBeGreaterThan(0);
+
+      console.log(
+        `[e2e] downloadTranslated → ${result.filename} (${result.blob.size} bytes, ${result.contentType ?? 'no content-type'})`,
+      );
+      const preview = (await result.blob.text()).slice(0, 80);
+
+      console.log(`[e2e] download preview: ${preview.replace(/\n/g, '⏎')}`);
+    });
+
     it('queryTexts returns the source/translation segments', async () => {
       expect(taskId).toBeDefined();
       const res = await c.queryTexts(taskId!);

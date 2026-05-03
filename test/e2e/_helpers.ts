@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OTranslatorClient } from '../../src/client.js';
-import type { TaskStatus, TranslationTask } from '../../src/types.js';
+import type { TranslationTask } from '../../src/types.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 
@@ -34,27 +34,11 @@ export async function fixtureFile(): Promise<File> {
   return new File([buffer], basename(path));
 }
 
-const TERMINAL: TaskStatus[] = ['Completed', 'Terminated', 'Cancelled'];
-
-/**
- * Poll `queryTask` until status is terminal. Bounded by `maxMs`.
- * Used by paid e2e tests where we submit a preview-mode task and wait for it.
- */
+/** Thin wrapper around `client.waitForTask` so test files keep their old import. */
 export async function pollUntilDone(
   c: OTranslatorClient,
   taskId: string,
-  { intervalMs = 5_000, maxMs = 240_000 }: { intervalMs?: number; maxMs?: number } = {},
+  options: { intervalMs?: number; maxMs?: number } = {},
 ): Promise<TranslationTask> {
-  const start = Date.now();
-  let last: TranslationTask | undefined;
-  while (Date.now() - start < maxMs) {
-    last = await c.queryTask(taskId);
-    if (last.status && TERMINAL.includes(last.status)) return last;
-    await sleep(intervalMs);
-  }
-  throw new Error(
-    `Task ${taskId} did not reach a terminal state within ${maxMs}ms (last status: ${last?.status ?? 'unknown'})`,
-  );
+  return c.waitForTask(taskId, options);
 }
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));

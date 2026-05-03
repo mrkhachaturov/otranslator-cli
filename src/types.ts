@@ -238,3 +238,34 @@ export interface OTranslatorClientOptions {
   /** Custom fetch implementation. Default: `globalThis.fetch`. */
   fetch?: typeof globalThis.fetch;
 }
+
+// ---------------------------------------------------------------------------
+// SDK helpers (composed on top of the raw 15 endpoints)
+// ---------------------------------------------------------------------------
+
+export interface WaitForTaskOptions {
+  /** How long to sleep between polls. Default: 5000. */
+  intervalMs?: number;
+  /** Total time budget. Default: 240000. */
+  maxMs?: number;
+}
+
+export interface DownloadOptions {
+  /** Download the bilingual side-by-side rendering instead of the translated file. */
+  bilingual?: boolean;
+}
+
+export interface DownloadResult {
+  /** File contents. Returned as a `Blob` so it works in browsers and Node alike. */
+  blob: Blob;
+  /**
+   * Suggested filename derived from the task: `task.fileTitle` for the
+   * translated file, or `<basename>.bilingual.<ext>` when `bilingual` was
+   * requested.
+   */
+  filename: string;
+  /** Value of the response's `Content-Type` header, when the storage bucket sets it. */
+  contentType: string | null;
+  /** The task object the URL came from — handy for logging. */
+  task: TranslationTask;
+}
