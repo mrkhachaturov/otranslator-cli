@@ -1,0 +1,890 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OTranslator API",
+    "version": "1.0.0",
+    "description": "Unofficial OpenAPI specification for the OTranslator public API (https://otranslator.com).\n\nReconstructed from the official developer documentation at https://otranslator.com/en/developer and verified against live API responses on 2026-05-03.\n\nNotes:\n- All endpoints use HTTP POST, including read-only queries.\n- Authentication uses an `Authorization` header containing the raw secret key (no `Bearer` prefix).\n- Endpoints with no documented request body still expect `Content-Type: application/json` and an empty `{}` body.\n- Glossary `keys` and `translated` are sent and returned as JSON-encoded strings within the JSON body (doubly encoded). The official SDK parses on receive so consumers see native types.\n- Translation task responses include several fields not in the official docs: `fileTitle`, `fileUrl`, `wordNums`, `forceOCR`. `errorMsg` may be `null`.",
+    "contact": {
+      "name": "OTranslator",
+      "url": "https://otranslator.com/en/developer"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://otranslator.com/api",
+      "description": "Production"
+    }
+  ],
+  "security": [
+    {
+      "SecretKeyAuth": []
+    }
+  ],
+  "tags": [
+    { "name": "translation", "description": "Document/file translation tasks" },
+    { "name": "text", "description": "Synchronous text translation" },
+    { "name": "glossary", "description": "Terminology glossaries" },
+    { "name": "metadata", "description": "Supported languages, file types, models" },
+    { "name": "account", "description": "Account information" }
+  ],
+  "paths": {
+    "/v1/translation/create": {
+      "post": {
+        "tags": ["translation"],
+        "summary": "Create translation task",
+        "description": "Create a new translation task for document/file translation.",
+        "operationId": "createTranslationTask",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/CreateTranslationTaskRequest" },
+              "encoding": {
+                "file": { "contentType": "application/octet-stream" }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreateTranslationTaskResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/translation/query": {
+      "post": {
+        "tags": ["translation"],
+        "summary": "Query translation task",
+        "description": "Query translation task status and details.",
+        "operationId": "queryTranslationTask",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskIdRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TranslationTask" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/translation/delete": {
+      "post": {
+        "tags": ["translation"],
+        "summary": "Delete translation task",
+        "description": "Delete translation task by ID.",
+        "operationId": "deleteTranslationTask",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskIdRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deletion result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuccessResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/translation/start": {
+      "post": {
+        "tags": ["translation"],
+        "summary": "Restart translation task",
+        "description": "Used for restarting terminated tasks or paying credits for full document translation.",
+        "operationId": "restartTranslationTask",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RestartTranslationTaskRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restart result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuccessResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/translation/queryTexts": {
+      "post": {
+        "tags": ["translation"],
+        "summary": "Retrieve translation texts",
+        "description": "Get system-extracted one-to-one correspondence of original text and translation, returned in JSON format.",
+        "operationId": "queryTranslationTexts",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskIdRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Original/translated text pairs",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/QueryTextsResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/translation/updateTexts": {
+      "post": {
+        "tags": ["translation"],
+        "summary": "Revise translation",
+        "description": "Submit revisions for translated text in tasks, with the option to regenerate translations.",
+        "operationId": "reviseTranslation",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ReviseTranslationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Revision accepted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuccessResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/translation/translateTexts": {
+      "post": {
+        "tags": ["text"],
+        "summary": "Translate text",
+        "description": "Translate text and return translation results synchronously.",
+        "operationId": "translateTexts",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TranslateTextsRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Translated text",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TranslateTextsResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/glossary/create": {
+      "post": {
+        "tags": ["glossary"],
+        "summary": "Create glossary",
+        "description": "Create a new glossary containing terms and translations.",
+        "operationId": "createGlossary",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateGlossaryRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Glossary created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreateGlossaryResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/glossary/update": {
+      "post": {
+        "tags": ["glossary"],
+        "summary": "Update glossary",
+        "description": "Update glossary details or terminology.",
+        "operationId": "updateGlossary",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateGlossaryRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated glossary",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Glossary" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/glossary/query": {
+      "post": {
+        "tags": ["glossary"],
+        "summary": "Query glossary",
+        "description": "Retrieve glossary details by ID. `keys` and `translated` are returned as JSON-encoded strings within the JSON body — clients must JSON.parse them.",
+        "operationId": "queryGlossary",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GlossaryIdRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Glossary details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Glossary" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/glossary/delete": {
+      "post": {
+        "tags": ["glossary"],
+        "summary": "Delete glossary",
+        "description": "Delete glossary by ID. Returns `{ success: true }`.",
+        "operationId": "deleteGlossary",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GlossaryIdRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deletion result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuccessResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Query account information",
+        "description": "Query current user account details. Send `{}` as the body. Returns only the credit `balance` — the docs imply more fields, but the live API returns just that one.",
+        "operationId": "queryAccount",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Account details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Account" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/filetypes": {
+      "post": {
+        "tags": ["metadata"],
+        "summary": "Query supported document types",
+        "description": "Query all file formats supported for translation.",
+        "operationId": "queryFileTypes",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Supported file types",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FileTypesResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/languages": {
+      "post": {
+        "tags": ["metadata"],
+        "summary": "Query supported languages",
+        "description": "Query all languages supported by translation services.",
+        "operationId": "queryLanguages",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Supported languages",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LanguagesResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "post": {
+        "tags": ["metadata"],
+        "summary": "Query supported models",
+        "description": "List available translation models. Send `{}` as the body. As of 2026-05-03 returns 11 ids spanning gpt-5/5.4, claude-4.5/4.6, gemini-3.1, and deepseek-3.2 families with optional `-thinking` variants.",
+        "operationId": "queryModels",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Supported models",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ModelsResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "SecretKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "Raw secret key supplied as the value of the `Authorization` header (no `Bearer` prefix)."
+      }
+    },
+    "schemas": {
+      "TaskIdRequest": {
+        "type": "object",
+        "required": ["taskId"],
+        "properties": {
+          "taskId": { "type": "string", "description": "Translation task ID" }
+        }
+      },
+      "GlossaryIdRequest": {
+        "type": "object",
+        "required": ["glossaryId"],
+        "properties": {
+          "glossaryId": { "type": "string", "description": "Glossary ID" }
+        }
+      },
+      "SuccessResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" }
+        }
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": ["Waiting", "Processing", "Completed", "Terminated", "Cancelled"]
+      },
+      "CreateTranslationTaskRequest": {
+        "type": "object",
+        "required": ["file", "fromLang", "toLang"],
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "Files to be translated. See /v1/filetypes for supported types."
+          },
+          "fromLang": {
+            "type": "string",
+            "description": "Source language; cannot equal target language. See /v1/languages."
+          },
+          "toLang": {
+            "type": "string",
+            "description": "Target language; cannot equal source language. See /v1/languages."
+          },
+          "model": {
+            "type": "string",
+            "description": "AI model for translation. See /v1/models."
+          },
+          "fileDescription": {
+            "type": "string",
+            "description": "Document description: improves translation quality by providing additional context."
+          },
+          "glossary": {
+            "type": "string",
+            "description": "Terminology glossary name used for translation."
+          },
+          "preview": {
+            "type": "boolean",
+            "default": false,
+            "description": "Generate preview only. Costs 2 credits when true."
+          },
+          "shouldTranslateImage": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable image translation within documents (PDF/DOCX/PPTX/EPUB/ODS/ODT/ODF only)."
+          },
+          "shouldTranslateFileName": {
+            "type": "boolean",
+            "default": true,
+            "description": "Translate file names."
+          },
+          "password": {
+            "type": "string",
+            "description": "Password for opening encrypted PDF files."
+          },
+          "ignoreComments": { "type": "boolean", "default": false },
+          "ignoreNotes": {
+            "type": "boolean",
+            "default": false,
+            "description": "Ignore speaker notes in PPTX files."
+          },
+          "ignoreHeadersAndFooters": {
+            "type": "boolean",
+            "default": false,
+            "description": "Ignore headers and footers in DOCX files."
+          },
+          "ignoreHidden": {
+            "type": "boolean",
+            "default": false,
+            "description": "Ignore hidden slides in PPTX files."
+          },
+          "ignoreMasters": {
+            "type": "boolean",
+            "default": false,
+            "description": "Ignore master slide text in PPTX files."
+          },
+          "ignoreSheetNames": {
+            "type": "boolean",
+            "default": false,
+            "description": "Skip translating XLSX sheet names."
+          },
+          "extractTextRegExpPattern": {
+            "type": "string",
+            "description": "Only translate content matching this regex; replace with translations. txmsg format only."
+          },
+          "extractTextRegExpFlags": {
+            "type": "string",
+            "description": "Flags for `extractTextRegExpPattern`."
+          },
+          "webhookUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Callback URL for status updates. Payload: `{ taskId, progress, status }`."
+          }
+        }
+      },
+      "CreateTranslationTaskResponse": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "description": "Task ID" }
+        }
+      },
+      "TranslationTask": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "model": {
+            "type": "string",
+            "description": "Model the server actually used. May fall back to an internal default (e.g. `gpt-4.1-mini`) when no model is specified on createTask."
+          },
+          "fromLang": { "type": "string" },
+          "toLang": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/TaskStatus" },
+          "progress": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Progress, 0-100"
+          },
+          "errorMsg": {
+            "type": ["string", "null"],
+            "description": "Error message when status is Terminated; null on a healthy task."
+          },
+          "fileTitle": {
+            "type": "string",
+            "description": "Display title (typically the original filename). Not in the official docs."
+          },
+          "fileUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Pre-signed URL to the original uploaded file. Not in the official docs."
+          },
+          "translatedFileUrl": { "type": "string", "format": "uri" },
+          "translatedBilingualFileUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Bilingual download URL. Supports PDF/DOCX/PPTX/XLSX/EPUB/CSV/SRT/TXT/HTML/ODF only. Not generated for very large files or on translation errors."
+          },
+          "tokenCount": {
+            "type": "integer",
+            "description": "Token count for translatable text. PDF image translation calculated at 1,200 tokens per page."
+          },
+          "wordNums": {
+            "type": "integer",
+            "description": "Word count of the source document. Not in the official docs."
+          },
+          "price": {
+            "type": "integer",
+            "description": "Credits required to convert preview into a full translation."
+          },
+          "usedCredits": {
+            "type": "integer",
+            "description": "Credits consumed so far (preview costs 2 credits when free pool is exhausted)."
+          },
+          "glossary": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Glossary names used by the task"
+          },
+          "shouldTranslateImage": { "type": "boolean" },
+          "forceOCR": {
+            "type": "boolean",
+            "description": "Whether OCR was forced for the document. Not in the official docs."
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RestartTranslationTaskRequest": {
+        "type": "object",
+        "required": ["taskId"],
+        "properties": {
+          "taskId": { "type": "string" },
+          "payWithCredits": {
+            "type": "boolean",
+            "description": "Process payment for translation task. Only applies to unpaid documents; already-paid documents will not be charged again."
+          },
+          "model": {
+            "type": "string",
+            "description": "When `payWithCredits` is true, specifies the model used for full document translation. See /v1/models."
+          }
+        }
+      },
+      "QueryTextsResponse": {
+        "type": "object",
+        "description": "System-extracted source/translation map. Verified against the live API.",
+        "required": ["taskId", "texts", "revisedTexts"],
+        "properties": {
+          "taskId": { "type": "string" },
+          "texts": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Mapping of source text segment to its current translation. May contain special internal keys like `##EXTRACT_TERMS_KEY##`."
+          },
+          "revisedTexts": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Mapping of source text segment to a user-supplied revision."
+          }
+        }
+      },
+      "ReviseTranslationRequest": {
+        "type": "object",
+        "required": ["taskId", "revisedTexts"],
+        "properties": {
+          "taskId": { "type": "string" },
+          "revisedTexts": {
+            "description": "Mapping of segment key to revised translation. Documented as a JSON-stringified object in the API examples (e.g. `\"{\\\"key\\\":\\\"value\\\"}\"`).",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              },
+              {
+                "type": "string",
+                "description": "JSON-encoded mapping, as shown in the official examples."
+              }
+            ]
+          }
+        }
+      },
+      "TranslateTextsRequest": {
+        "type": "object",
+        "required": ["texts", "fromLang", "toLang"],
+        "properties": {
+          "texts": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Text to be translated."
+          },
+          "fromLang": { "type": "string" },
+          "toLang": { "type": "string" },
+          "model": { "type": "string" },
+          "fileDescription": {
+            "type": "string",
+            "description": "Document description: provides background context to improve translation quality."
+          }
+        }
+      },
+      "TranslateTextsResponse": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "translatedTexts": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "price": { "type": "integer" },
+          "usedCredits": { "type": "integer" }
+        }
+      },
+      "CreateGlossaryRequest": {
+        "type": "object",
+        "required": ["name", "targetLang", "keys", "translated"],
+        "properties": {
+          "name": { "type": "string", "description": "Glossary name" },
+          "desc": { "type": "string", "description": "Glossary description" },
+          "targetLang": {
+            "type": "string",
+            "description": "Glossary applies when documents are translated into this target language."
+          },
+          "keys": {
+            "description": "Source terminology list. Documented as `String[]`; the API examples encode it as a JSON string.",
+            "oneOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "string" }]
+          },
+          "translated": {
+            "description": "Term-to-translation mapping. Documented as `JSON`; the API examples encode it as a JSON string.",
+            "oneOf": [
+              { "type": "object", "additionalProperties": { "type": "string" } },
+              { "type": "string" }
+            ]
+          }
+        }
+      },
+      "CreateGlossaryResponse": {
+        "type": "object",
+        "properties": {
+          "glossaryId": { "type": "string" }
+        }
+      },
+      "UpdateGlossaryRequest": {
+        "type": "object",
+        "required": ["glossaryId"],
+        "properties": {
+          "glossaryId": { "type": "string" },
+          "name": { "type": "string" },
+          "desc": { "type": "string" },
+          "targetLang": { "type": "string" },
+          "keys": {
+            "oneOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "string" }]
+          },
+          "translated": {
+            "oneOf": [
+              { "type": "object", "additionalProperties": { "type": "string" } },
+              { "type": "string" }
+            ]
+          }
+        }
+      },
+      "Glossary": {
+        "type": "object",
+        "description": "Glossary as returned by the API. `keys` and `translated` arrive as JSON-encoded strings — clients must run them through `JSON.parse`. The bundled SDK does this transparently.",
+        "required": ["glossaryId"],
+        "properties": {
+          "glossaryId": { "type": "string" },
+          "name": { "type": "string" },
+          "desc": { "type": "string" },
+          "targetLang": { "type": "string" },
+          "keys": {
+            "type": "string",
+            "description": "JSON-encoded array of source terms. Example: `\"[\\\"otranslator\\\",\\\"术语\\\"]\"`."
+          },
+          "translated": {
+            "type": "string",
+            "description": "JSON-encoded object mapping source term to translation. Example: `\"{\\\"otranslator\\\":\\\"OTranslator\\\"}\"`."
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "required": ["balance"],
+        "description": "Account information. Verified against the live API on 2026-05-03.",
+        "properties": {
+          "balance": { "type": "integer", "description": "Remaining credit balance." }
+        }
+      },
+      "FileTypesResponse": {
+        "type": "object",
+        "properties": {
+          "types": {
+            "type": "array",
+            "items": { "type": "string" },
+            "example": [
+              "doc",
+              "docx",
+              "rtf",
+              "xls",
+              "xlsx",
+              "ppt",
+              "pptx",
+              "wps",
+              "et",
+              "dps",
+              "pdf",
+              "ai",
+              "indd",
+              "idml",
+              "odt",
+              "ods",
+              "odp",
+              "epub",
+              "chm",
+              "zip",
+              "cbz",
+              "cbr",
+              "jpg",
+              "jpeg",
+              "png",
+              "webp",
+              "svg",
+              "srt",
+              "ass",
+              "ssa",
+              "vtt",
+              "json",
+              "resjson",
+              "html",
+              "xml",
+              "go",
+              "yml",
+              "yaml",
+              "php",
+              "plist",
+              "stringsdict",
+              "wav",
+              "ape",
+              "mp3",
+              "aac",
+              "flac",
+              "alac",
+              "ogg",
+              "wma",
+              "ac3",
+              "dts",
+              "amr",
+              "aiff",
+              "m4a",
+              "txt",
+              "md",
+              "po",
+              "xlf",
+              "xliff",
+              "csv",
+              "tsv",
+              "tex",
+              "arxiv"
+            ]
+          }
+        }
+      },
+      "LanguagesResponse": {
+        "type": "object",
+        "properties": {
+          "languages": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Supported language names. The wildcard value is `Any Language`."
+          }
+        }
+      },
+      "ModelsResponse": {
+        "type": "object",
+        "required": ["models"],
+        "description": "Available translation models. Verified against the live API on 2026-05-03.",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": { "type": "string" },
+            "example": [
+              "gpt-5-mini",
+              "gpt-5.4",
+              "gpt-5.4-thinking",
+              "claude-4.5-haiku",
+              "claude-4.6-sonnet",
+              "claude-4.6-sonnet-thinking",
+              "gemini-3.1-flash",
+              "gemini-3.1-pro",
+              "gemini-3.1-thinking",
+              "deepseek-3.2",
+              "deepseek-3.2-thinking"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

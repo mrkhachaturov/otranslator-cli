@@ -1,0 +1,64 @@
+# Trusted publishing via OIDC — no NPM_TOKEN required.
+#
+# Setup (one-time, after the first manual publish):
+#   1. npm login        # publish v0.1.0 manually so the package exists
+#   2. npm publish      # creates the package on the registry
+#   3. On https://www.npmjs.com → package settings → Trusted Publishers, add a
+#      GitHub Actions publisher pointing at this workflow
+#      (repository: mrkhachaturov/otranslator-cli, workflow: publish.yml).
+#   4. From v0.1.1 onward: bump version in package.json + CHANGELOG.md, commit,
+#      tag `git tag v0.1.1`, push the tag, and this workflow takes over.
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      - name: Verify pipeline before publishing
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Get version from tag
+        id: tag
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Read changelog entry
+        id: changelog
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          version: ${{ steps.tag.outputs.version }}
+          path: ./CHANGELOG.md
+
+      - name: Publish to npm (OIDC trusted publisher, provenance)
+        run: npm publish --provenance --access public
+
+      - name: Create GitHub Release from CHANGELOG
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ steps.changelog.outputs.version }}
+          name: v${{ steps.changelog.outputs.version }}
+          body: ${{ steps.changelog.outputs.changes }}
+          prerelease: ${{ steps.changelog.outputs.status == 'prereleased' }}
+          draft: ${{ steps.changelog.outputs.status == 'unreleased' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
