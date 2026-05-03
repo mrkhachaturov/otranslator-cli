@@ -213,25 +213,43 @@ npm run cli -- task <taskId>
 
 ## Releasing
 
-The first publish is manual. Everything after that is OIDC trusted publishing — no token in CI.
+The first publish is manual and **does not include provenance** — OIDC tokens can only be minted inside GitHub Actions, not on a laptop. Every subsequent release is published from CI on tag push, with provenance signed against the source commit.
 
 ```bash
-# One time
+# One-time first publish
 npm login
-npm publish --access public --provenance
+npm publish --access public
 
-# On npmjs.com → Package settings → Trusted Publishers, add a GitHub Actions
-# publisher: repo = mrkhachaturov/otranslator-cli, workflow = publish.yml.
+# Then on https://www.npmjs.com/package/otranslator-cli →
+#   Settings → Trusted Publishers → Add Publisher
+#   - Repository: mrkhachaturov/otranslator-cli
+#   - Workflow:   publish.yml
+#   - Environment: (leave blank)
 
-# From the next release onwards
+# Subsequent releases
 # 1. Bump version in package.json
-# 2. Move the [Unreleased] block in CHANGELOG.md under a new versioned heading
+# 2. Add a new [X.Y.Z] - <date> heading in CHANGELOG.md (move items from
+#    [Unreleased]). Keep a Changelog format.
 # 3. Commit, tag, push
 git commit -am 'release: v0.1.1'
 git tag v0.1.1
-git push origin main --tags
-# CI publishes to npm and creates a GitHub Release with the changelog body.
+git push --follow-tags
+# Actions publishes to npm with provenance and creates a GitHub Release whose
+# body is the matching CHANGELOG section.
 ```
+
+### Verifying provenance
+
+Once a release is published from CI, anyone can verify the build trail:
+
+```bash
+# Visual: https://www.npmjs.com/package/otranslator-cli shows a Provenance badge
+# Programmatic:
+npm view otranslator-cli --json | jq '.dist.attestations'
+npm install otranslator-cli && npm audit signatures
+```
+
+Cryptographic verification independent of npm uses Sigstore's transparency log — see https://search.sigstore.dev for the public Rekor entries.
 
 ## License
 

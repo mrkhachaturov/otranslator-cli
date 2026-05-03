@@ -2,63 +2,74 @@
 #
 # Setup (one-time, after the first manual publish):
 #   1. npm login        # publish v0.1.0 manually so the package exists
-#   2. npm publish      # creates the package on the registry
-#   3. On https://www.npmjs.com → package settings → Trusted Publishers, add a
-#      GitHub Actions publisher pointing at this workflow
-#      (repository: mrkhachaturov/otranslator-cli, workflow: publish.yml).
+#   2. npm publish --access public
+#      (no --provenance — local laptops can't mint OIDC tokens)
+#   3. On https://www.npmjs.com → otranslator-cli → Settings → Trusted
+#      Publishers, add a GitHub Actions publisher pointing at this workflow:
+#        repository: mrkhachaturov/otranslator-cli
+#        workflow:   publish.yml
+#        environment: (leave blank)
 #   4. From v0.1.1 onward: bump version in package.json + CHANGELOG.md, commit,
-#      tag `git tag v0.1.1`, push the tag, and this workflow takes over.
+#      `git tag v0.1.1`, `git push --follow-tags`. This workflow takes over.
 name: Publish to npm
 
+# Triggered by pushing a semver tag. Both `v`-prefixed and bare tags work, plus
+# prerelease tags like `v0.2.0-beta.1`.
 on:
   push:
     tags:
-      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
 
 permissions:
-  id-token: write
-  contents: write
+  id-token: write # OIDC for npm Trusted Publisher + provenance
+  contents: write # softprops/action-gh-release needs this to create a Release
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '22'
-          registry-url: https://registry.npmjs.org
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
 
       - run: npm ci
 
-      - name: Verify pipeline before publishing
-        run: npm run check
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build
 
-      - name: Build
-        run: npm run build
+      # NPM_CONFIG_PROVENANCE=true asks npm for a provenance attestation; the
+      # `id-token: write` permission above gives the OIDC token to sign it with.
+      - run: npm publish --access public
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
 
-      - name: Get version from tag
-        id: tag
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+      # Extract the matching CHANGELOG.md section for this tag. Handles both
+      # bracketed Keep a Changelog headings (`## [0.1.0] - 2026-05-03`) and
+      # bare ones (`## 0.1.0 - …`), at heading depth 2 or 4.
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VERSION" '
+            BEGIN { esc = ver; gsub(/\./, "\\.", esc) }
+            !started && $0 ~ "^(##|####) +\\[?"esc"\\]?( |$)" { started = 1; next }
+            started && /^(##|####) +\[?[0-9]/ { exit }
+            started { print }
+          ' CHANGELOG.md > .release-notes.md
+          echo "---release notes for ${VERSION}---"
+          cat .release-notes.md
 
-      - name: Read changelog entry
-        id: changelog
-        uses: mindsers/changelog-reader-action@v2
+      - uses: softprops/action-gh-release@v2
         with:
-          version: ${{ steps.tag.outputs.version }}
-          path: ./CHANGELOG.md
-
-      - name: Publish to npm (OIDC trusted publisher, provenance)
-        run: npm publish --provenance --access public
-
-      - name: Create GitHub Release from CHANGELOG
-        uses: ncipollo/release-action@v1
-        with:
-          tag: v${{ steps.changelog.outputs.version }}
-          name: v${{ steps.changelog.outputs.version }}
-          body: ${{ steps.changelog.outputs.changes }}
-          prerelease: ${{ steps.changelog.outputs.status == 'prereleased' }}
-          draft: ${{ steps.changelog.outputs.status == 'unreleased' }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          body_path: .release-notes.md
+          make_latest: 'true'
+          fail_on_unmatched_files: false
